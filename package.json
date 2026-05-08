@@ -1,0 +1,25 @@
+{
+  "name": "webhook_service",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:webhook": "node server.js",
+    "start:core": "node core-service.js",
+    "start:retry": "node retry-service.js",
+    "subscribe:page": "node subscribe.js",
+    "test:cases": "powershell -ExecutionPolicy Bypass -File .\\test-cases.ps1",
+    "test": "node --check server.js && node --check core-service.js && node --check retry-service.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.15.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "kafkajs": "^2.2.4"
+  }
+}
