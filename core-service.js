@@ -19,7 +19,7 @@ async function start() {
   await consumer.connect();
   await consumer.subscribe({
     topic: config.topics.rawEvents,
-    fromBeginning: true
+    fromBeginning: config.consumerFromBeginning
   });
 
   console.log(`Core service is consuming topic ${config.topics.rawEvents}`);
@@ -31,13 +31,28 @@ async function start() {
       console.log(`[core-service] Processing event ${payload.eventId}`);
 
       try {
-        await processEvent({
+        const result = await processEvent({
           event: payload,
           producer,
           eventStore,
           blacklistStore,
           actionExecutor
         });
+
+        if (result && result.processedPayload) {
+          console.log(
+            "[core-service] Result",
+            JSON.stringify({
+              eventId: result.processedPayload.eventId,
+              intent: result.processedPayload.intent,
+              sentiment: result.processedPayload.sentiment,
+              action: result.processedPayload.action,
+              status: result.processedPayload.status
+            })
+          );
+        } else if (result && result.skipped) {
+          console.log(`[core-service] Skipped ${payload.eventId}: ${result.reason}`);
+        }
       } catch (error) {
         console.error(`[core-service] Event ${payload.eventId} failed:`, error.message);
       }
