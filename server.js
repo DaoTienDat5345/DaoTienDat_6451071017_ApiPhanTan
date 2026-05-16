@@ -3,13 +3,13 @@ require("dotenv").config();
 const express = require("express");
 const config = require("./lib/config");
 const { normalizeFacebookPayload } = require("./lib/facebook-normalizer");
-const { createKafka, ensureTopics } = require("./lib/kafka");
+const { createKafka, ensureTopics, createReliableProducer } = require("./lib/kafka");
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 
 const kafka = createKafka("webhook-service");
-const producer = kafka.producer();
+const producer = createReliableProducer(kafka);
 
 app.use((req, res, next) => {
   res.setHeader("ngrok-skip-browser-warning", "true");
@@ -42,6 +42,7 @@ async function webhookEventHandler(req, res) {
 
     await producer.send({
       topic: config.topics.rawEvents,
+      acks: -1,
       messages: normalizedEvents.map((event) => ({
         key: event.eventId,
         value: JSON.stringify(event)

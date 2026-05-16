@@ -1,16 +1,17 @@
 require("dotenv").config();
 
 const config = require("./lib/config");
-const { createKafka, ensureTopics } = require("./lib/kafka");
+const { createKafka, ensureTopics, createReliableProducer } = require("./lib/kafka");
 const { sleep } = require("./lib/utils");
 
 const kafka = createKafka("retry-service");
 const consumer = kafka.consumer({ groupId: config.retryGroupId });
-const producer = kafka.producer();
+const producer = createReliableProducer(kafka);
 
 async function publishStatus(eventId, status, extra = {}) {
   await producer.send({
     topic: config.topics.processingStatus,
+    acks: -1,
     messages: [
       {
         key: eventId,
@@ -50,6 +51,7 @@ async function start() {
 
       await producer.send({
         topic: config.topics.rawEvents,
+        acks: -1,
         messages: [
           {
             key: payload.event.eventId,
