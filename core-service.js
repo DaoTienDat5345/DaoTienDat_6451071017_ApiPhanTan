@@ -2,7 +2,7 @@ require("dotenv").config();
 
 const config = require("./lib/config");
 const { ActionExecutor } = require("./lib/action-executor");
-const { BlacklistStore, EventStore } = require("./lib/file-store");
+const { BlacklistStore, EventStore, ReplyGuardStore } = require("./lib/file-store");
 const { createKafka, ensureTopics } = require("./lib/kafka");
 const { processEvent } = require("./lib/pipeline");
 
@@ -11,7 +11,8 @@ const consumer = kafka.consumer({ groupId: config.consumerGroupId });
 const producer = kafka.producer();
 const eventStore = new EventStore();
 const blacklistStore = new BlacklistStore();
-const actionExecutor = new ActionExecutor({ producer, blacklistStore });
+const replyGuardStore = new ReplyGuardStore();
+const actionExecutor = new ActionExecutor({ producer, blacklistStore, replyGuardStore });
 
 async function start() {
   await ensureTopics(kafka, Object.values(config.topics));
