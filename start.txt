@@ -1,0 +1,211 @@
+HUONG DAN KHOI DONG LAI PROJECT FACEBOOK WEBHOOK
+
+Thu muc project:
+D:\Webhook\DaoTienDat_6451071017_Webhook\DaoTienDat_6451071017_Webhook
+
+============================================================
+1. MO TERMINAL / POWERSHELL TAI THU MUC PROJECT
+============================================================
+
+Chay lenh:
+
+cd D:\Webhook\DaoTienDat_6451071017_Webhook\DaoTienDat_6451071017_Webhook
+
+
+============================================================
+2. KHOI DONG LAI TOAN BO HE THONG
+============================================================
+
+Neu chi muon mo lai project sau khi tat may / tat Docker:
+
+docker compose up -d
+
+Neu vua sua code hoac sua docker-compose.yml thi chay:
+
+docker compose up -d --build
+
+
+============================================================
+3. KIEM TRA CAC CONTAINER DANG CHAY
+============================================================
+
+docker compose ps
+
+Can thay cac service chinh o trang thai Up:
+
+backend-api
+core-service
+retry-service
+webhook-service
+webhook-kafka
+webhook-kafka-ui
+webhook-postgres
+webhook-prometheus
+webhook-alertmanager
+webhook-kafka-exporter
+webhook-zookeeper
+
+
+============================================================
+4. XEM LOG CAC SERVICE QUAN TRONG
+============================================================
+
+Xem log webhook-service:
+
+docker compose logs -f webhook-service
+
+Xem log core-service:
+
+docker compose logs -f core-service
+
+Xem log backend-api:
+
+docker compose logs -f backend-api
+
+Xem log retry-service:
+
+docker compose logs -f retry-service
+
+Xem log kafka-exporter:
+
+docker compose logs -f kafka-exporter
+
+
+============================================================
+5. CAC DUONG DAN KIEM TRA TREN TRINH DUYET
+============================================================
+
+Kafka UI:
+http://localhost:8081
+
+Backend API:
+http://localhost:3000
+
+Webhook service:
+http://localhost:3001
+
+Prometheus:
+http://localhost:9090
+
+Prometheus Targets:
+http://localhost:9090/targets
+
+Alertmanager:
+http://localhost:9093
+
+Kafka Exporter Metrics:
+http://localhost:9308/metrics
+
+
+============================================================
+6. KIEM TRA POSTGRESQL
+============================================================
+
+Vao PostgreSQL:
+
+docker exec -it webhook-postgres psql -U fb_api_user -d fb_api_db
+
+Sau khi vao man hinh PostgreSQL, go:
+
+\dt
+
+Neu thay cac bang sau la OK:
+
+comments
+dead_letter_logs
+idempotency_keys
+processing_logs
+
+Thoat PostgreSQL:
+
+\q
+
+
+============================================================
+7. TEST VERIFY WEBHOOK
+============================================================
+
+Thay dat123 bang VERIFY_TOKEN trong file .env cua ban neu khac.
+
+curl "http://localhost:3001/webhook?hub.mode=subscribe&hub.verify_token=dat123&hub.challenge=123456"
+
+Ket qua dung:
+
+123456
+
+
+============================================================
+8. TEST HMAC-SHA256 POST WEBHOOK
+============================================================
+
+Neu da cau hinh FACEBOOK_APP_SECRET, request POST khong co chu ky phai bi chan.
+
+PowerShell:
+
+Invoke-WebRequest -Method POST "http://localhost:3001/webhook" -ContentType "application/json" -Body '{"object":"page","entry":[]}'
+
+Ket qua dung:
+403 Forbidden
+Missing X-Hub-Signature-256 header
+
+
+============================================================
+9. DUNG TOAN BO HE THONG
+============================================================
+
+Dung container nhung giu lai database volume:
+
+docker compose down
+
+Dung va xoa luon volume du lieu:
+
+docker compose down -v
+
+CAN THAN: docker compose down -v se xoa du lieu PostgreSQL.
+
+
+============================================================
+10. LENH KHOI DONG NHANH MOI LAN BAT MAY
+============================================================
+
+cd D:\Webhook\DaoTienDat_6451071017_Webhook\DaoTienDat_6451071017_Webhook
+docker compose up -d
+docker compose ps
+
+
+============================================================
+11. NEU GAP LOI PORT BI TRUNG
+============================================================
+
+Kiem tra port 8080:
+
+netstat -ano | findstr :8080
+
+Kiem tra port 9092:
+
+netstat -ano | findstr :9092
+
+Kiem tra port 5432:
+
+netstat -ano | findstr :5432
+
+Neu Kafka UI bi trung port 8080, trong docker-compose.yml nen dung:
+
+8081:8080
+
+
+============================================================
+12. NEU KAFKA EXPORTER KHONG TU CHAY
+============================================================
+
+Chay rieng kafka-exporter:
+
+docker compose up -d kafka-exporter
+
+Kiem tra:
+
+docker compose ps | findstr exporter
+
+Mo lai:
+
+http://localhost:9308/metrics

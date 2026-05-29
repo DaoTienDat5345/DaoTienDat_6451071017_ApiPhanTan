@@ -1,3 +1,20 @@
+# dependencies
+node_modules/
+*/node_modules/
+
+# environment files
 .env
-.env.example
+*/.env
+.env.local
+
+# runtime data
 data/
+*/data/events/
+*/data/*.tmp
+
+# logs
+*.log
+npm-debug.log*
+
+# docker/build
+.dockerignore

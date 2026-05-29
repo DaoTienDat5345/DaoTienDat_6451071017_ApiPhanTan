@@ -1,0 +1,29 @@
+groups:
+  - name: kafka_alerts
+    rules:
+      - alert: DeadLetterQueueReceived
+        expr: increase(kafka_topic_partition_current_offset{topic="dead_letter"}[1m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Có message mới vào Dead Letter Queue"
+          description: "Topic dead_letter vừa nhận message mới. Kiểm tra Kafka UI tại http://localhost:8080 để xử lý thủ công."
+
+      - alert: KafkaConsumerLagHigh
+        expr: kafka_consumergroup_lag > 500
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer lag cao bất thường"
+          description: "Consumer group {{ $labels.consumergroup }} đang lag {{ $value }} message trên topic {{ $labels.topic }}."
+
+      - alert: WebhookReceiverSilent
+        expr: increase(kafka_topic_partition_current_offset{topic="raw_events"}[5m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Không có event nào từ Facebook trong 10 phút"
+          description: "Topic raw_events không có message mới. Kiểm tra lại Facebook Webhook subscription hoặc webhook-service."
