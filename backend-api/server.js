@@ -3,7 +3,9 @@ require("dotenv").config();
 const express = require("express");
 const config = require("./lib/config");
 const { createKafka, ensureTopics, createReliableProducer } = require("./lib/kafka");
-const { FileIdempotencyStore } = require("./lib/idempotency-store");
+const { DatabaseIdempotencyStore } = require("./lib/idempotency-db-store");
+const { CommentStatusStore } = require("./lib/comment-status-store");
+const { checkDatabaseConnection, closeDatabase } = require("./lib/db");
 const { createFacebookClient } = require("./lib/facebook-client");
 const { CircuitBreaker } = require("./lib/circuit-breaker");
 const { isRetryableError, nowIso } = require("./lib/utils");
@@ -14,7 +16,8 @@ app.use(express.json({ limit: "2mb" }));
 const kafka = createKafka("backend-api");
 const producer = createReliableProducer(kafka);
 const consumer = kafka.consumer({ groupId: config.backendGroupId });
-const idempotencyStore = new FileIdempotencyStore();
+const idempotencyStore = new DatabaseIdempotencyStore();
+const commentStatusStore = new CommentStatusStore();
 const facebookClient = createFacebookClient();
 const facebookBreaker = new CircuitBreaker({
   failureThreshold: config.circuitBreaker.failureThreshold,
@@ -205,6 +208,11 @@ async function handleCommandMessage(rawPayload) {
     const previous = await idempotencyStore.get(command.commandId);
     console.log(`[backend-api] duplicate skipped command=${command.commandId}`);
     await publishStatus(command, "duplicate_skipped", { previous });
+    try {
+      await commentStatusStore.markDuplicateSkipped(command, previous);
+    } catch (dbError) {
+      console.error(`[backend-api] Cannot persist duplicate status command=${command.commandId}:`, dbError.message);
+    }
     return { skipped: true, reason: "idempotency_key_exists" };
   }
 
@@ -212,6 +220,11 @@ async function handleCommandMessage(rawPayload) {
     const breakerState = facebookBreaker.getState();
     const error = new Error(`Facebook circuit breaker is ${breakerState.state}`);
     error.code = "CIRCUIT_BREAKER_OPEN";
+    try {
+      await commentStatusStore.markFailed(command, error);
+    } catch (dbError) {
+      console.error(`[backend-api] Cannot persist circuit breaker failure command=${command.commandId}:`, dbError.message);
+    }
     await publishSendFailed(command, error);
     return { queuedForRetry: true, reason: "circuit_breaker_open" };
   }
@@ -232,6 +245,12 @@ async function handleCommandMessage(rawPayload) {
       facebookResponse
     });
 
+    try {
+      await commentStatusStore.markSucceeded(command, facebookResponse);
+    } catch (dbError) {
+      console.error(`[backend-api] Cannot persist success status command=${command.commandId}:`, dbError.message);
+    }
+
     console.log(`[backend-api] sent command=${command.commandId}`);
     return { success: true, facebookResponse };
   } catch (error) {
@@ -239,6 +258,12 @@ async function handleCommandMessage(rawPayload) {
     const nonRetryable = isNonRetryableFacebookError(error) || !isRetryableError(error);
 
     console.error(`[backend-api] failed command=${command.commandId}:`, extractErrorDetails(error));
+    try {
+      await idempotencyStore.markFailed(command.commandId, error.message);
+      await commentStatusStore.markFailed(command, error);
+    } catch (dbError) {
+      console.error(`[backend-api] Cannot persist failure status command=${command.commandId}:`, dbError.message);
+    }
     await publishSendFailed(command, error, { nonRetryable });
     return { queuedForRetry: !nonRetryable, nonRetryable, error: error.message };
   }
@@ -296,6 +321,26 @@ app.get("/health", (req, res) => {
       produceOnFailure: config.topics.sendFailed
     }
   });
+});
+
+
+app.get("/health/db", async (req, res) => {
+  try {
+    const result = await checkDatabaseConnection();
+    res.json({
+      success: true,
+      service: "backend-api",
+      message: "Database connected",
+      databaseTime: result.now
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      service: "backend-api",
+      message: "Database connection failed",
+      error: error.message
+    });
+  }
 });
 
 app.get("/posts", async (req, res) => {
@@ -381,6 +426,7 @@ async function shutdown(signal) {
   try {
     await consumer.disconnect();
     await producer.disconnect();
+    await closeDatabase();
   } finally {
     process.exit(0);
   }

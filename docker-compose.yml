@@ -118,6 +118,7 @@ services:
     container_name: backend-api
     depends_on:
       - kafka
+      - postgres
     env_file:
       - ./.env
     environment:

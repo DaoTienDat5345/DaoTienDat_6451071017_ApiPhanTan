@@ -5,6 +5,8 @@ const { ActionExecutor } = require("./lib/action-executor");
 const { BlacklistStore, EventStore, ReplyGuardStore } = require("./lib/file-store");
 const { createKafka, ensureTopics, createReliableProducer } = require("./lib/kafka");
 const { processEvent } = require("./lib/pipeline");
+const { CommentStore } = require("./lib/comment-store");
+const { closeDatabase } = require("./lib/db");
 
 const kafka = createKafka("core-service");
 const consumer = kafka.consumer({
@@ -21,6 +23,7 @@ const eventStore = new EventStore();
 const blacklistStore = new BlacklistStore();
 const replyGuardStore = new ReplyGuardStore();
 const actionExecutor = new ActionExecutor({ producer, blacklistStore, replyGuardStore });
+const commentStore = new CommentStore();
 
 function safeParseMessage(message) {
   try {
@@ -82,6 +85,12 @@ async function handleMessage(message, batch) {
   );
 
   try {
+    await commentStore.upsertReceived(payload);
+  } catch (dbError) {
+    console.error(`[core-service] Cannot persist received comment ${payload.eventId}:`, dbError.message);
+  }
+
+  try {
     const result = await processEvent({
       event: payload,
       producer,
@@ -91,6 +100,12 @@ async function handleMessage(message, batch) {
     });
 
     if (result && result.processedPayload) {
+      try {
+        await commentStore.upsertProcessed(result.processedPayload);
+      } catch (dbError) {
+        console.error(`[core-service] Cannot persist processed comment ${payload.eventId}:`, dbError.message);
+      }
+
       console.log(
         "[core-service] Result",
         JSON.stringify({
@@ -102,11 +117,23 @@ async function handleMessage(message, batch) {
         })
       );
     } else if (result && result.skipped) {
+      try {
+        await commentStore.markIgnored(payload, result.reason);
+      } catch (dbError) {
+        console.error(`[core-service] Cannot persist ignored comment ${payload.eventId}:`, dbError.message);
+      }
+
       console.log(`[core-service] Skipped ${payload.eventId}: ${result.reason}`);
     }
   } catch (error) {
     // processEvent đã tự ghi retry/dead_letter khi lỗi xử lý. Ở đây vẫn cho phép
     // commit offset để consumer không kẹt mãi tại 1 message độc hại.
+    try {
+      await commentStore.markFailed(payload, error);
+    } catch (dbError) {
+      console.error(`[core-service] Cannot persist failed comment ${payload.eventId}:`, dbError.message);
+    }
+
     console.error(`[core-service] Event ${payload.eventId} failed after retry/DLQ handling:`, error.message);
   }
 }
@@ -163,6 +190,7 @@ async function shutdown(signal) {
   try {
     await consumer.disconnect();
     await producer.disconnect();
+    await closeDatabase();
   } finally {
     process.exit(0);
   }
